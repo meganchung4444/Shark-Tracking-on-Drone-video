@@ -5,7 +5,6 @@ import numpy as np
 import json
 from ultralytics import YOLO
 import supervision as sv
-from fast_sam_ubuntu import FastSAMCustom
 
 THICKNESS = 2
 FONT_SCALE = 0.5
