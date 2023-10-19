@@ -1,11 +1,10 @@
-from collections import defaultdict
 import sys
 import cv2
-import numpy as np
 import json
 from ultralytics import YOLO
-import supervision as sv
-from fast_sam_ubuntu import FastSAMCustom
+# import supervision as sv
+# import numpy as np
+# from collections import defaultdict
 
 THICKNESS = 2
 FONT_SCALE = 0.5
@@ -70,15 +69,15 @@ def is_overlapping(rec1, rec2):
     else:
         return False
 
-def find_sharks_by_sam(prev_sharks_prediction_list, sam_results):
-    results = []
-    for shark in prev_sharks_prediction_list:
-        shark_name, shark_cls, shark_box, shark_confidence = shark
-        for obj in sam_results:
-            obj_name, obj_cls, obj_box, obj_confidence = obj
-            if is_overlapping(shark_box, obj_box):
-                results.append(('shark', obj_cls, obj_box, obj_confidence))
-    return results
+# def find_sharks_by_sam(prev_sharks_prediction_list, sam_results):
+#     results = []
+#     for shark in prev_sharks_prediction_list:
+#         shark_name, shark_cls, shark_box, shark_confidence = shark
+#         for obj in sam_results:
+#             obj_name, obj_cls, obj_box, obj_confidence = obj
+#             if is_overlapping(shark_box, obj_box):
+#                 results.append(('shark', obj_cls, obj_box, obj_confidence))
+#     return results
 
 def get_box_center(box):
     x1 = box["x1"]

@@ -131,12 +131,13 @@ def draw_labels(detected_objects, frame):
 
 class GeneralObject():
 
-    def __init__(self, name, cls, box, confidence):
+    def __init__(self, name, cls, box, confidence, frame_cnt):
         self.name = name
         self.cls = cls
         self.box = box
         self.tracking_history = []
         self.confidence = confidence
+        self.frame_cnt = frame_cnt
     
     def __str__(self):
         return f"[ Name={self.name} Box={self.box} ]"
@@ -221,7 +222,7 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
                     confidence = obj["confidence"]
                     
                     # Create a new General Object
-                    new_obj = GeneralObject(name, cls, box, confidence)
+                    new_obj = GeneralObject(name, cls, box, confidence, frame_cnt)
                     
                     # Append the object if it has a high possiblity of being a shark
                     if new_obj.name == 'shark' and new_obj.confidence > standard_confidence:
