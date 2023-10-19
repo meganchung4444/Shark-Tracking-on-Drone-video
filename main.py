@@ -87,6 +87,49 @@ def get_box_center(box):
     y2 = box["y2"]
     return (int(x1 + ((x2 - x1)//2)), int(y1 + ((y2 - y1)//2)))
 
+def draw_tracking_history(prev_objects, detected_objects, objects, frame):
+    # 2. Draw Tracking History for each frame
+
+    # The loop will run only when objects is not empty
+    for obj in objects: 
+
+        # Draw a line 
+        if prev_objects:
+            is_overlapping = False 
+            # Connect dectected objects from previous frame and current frame if any of them are overlapping
+            for prev_obj in prev_objects:
+                if prev_obj == obj:
+                    prev_obj.draw_line(frame, obj)
+                    is_overlapping = True
+            
+            # If there was at least on overlap occured, update the prev_objects
+            if is_overlapping:
+                prev_objects = objects
+            
+            # If not, make prev_objects None and we assume there were different sharks detected on the current frame
+            else:
+                prev_objects = None
+
+        # If no prev_objects, assume currently detected objects are the beggining of new objects
+        else:
+            detected_objects.append(obj)
+       
+        # Update prev_objects
+        prev_objects = objects
+
+def draw_labels(detected_objects, frame):
+
+    for obj in detected_objects:
+
+        # Get the box center
+        center = get_box_center(obj.box)
+
+        # Plot the object's location on the frame
+        cv2.circle(frame, center, 2, LABEL_COLOR, 3)
+        
+        # Draw a label
+        obj.draw_label(frame, f"t{obj.frame_cnt}")
+
 class GeneralObject():
 
     def __init__(self, name, cls, box, confidence):
@@ -132,6 +175,7 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
 
     frame_tracker = []
     prev_objects = None
+    detected_objects = []
 
     # 1. Set up a model
     model = YOLO(model_path)
@@ -159,26 +203,14 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
             # Run YOLOv8 tracking on the frame, persisting tracks between frames
             results = model(frame)
             
-            """
-            # Custom SAM
-            sam_results = fs.get_json_data(frame=frame)
-            if sam_results:
-                for idx, r in enumerate(sam_results):
-                    # print(f"SAM {frame_cnt}-{idx}", r)
-                    continue
-            else:
-                print("No SAM results")
-                # Doc: https://docs.ultralytics.com/modes/predict/#boxes
-            """
-
             # 1. Iterate the YOLO results
-            for idx, r in enumerate(results):
+            for _, r in enumerate(results):
+                
                 # Returns torch.Tensor(https://pytorch.org/docs/stable/tensors.html)
                 # xywh returns the boxes in xywh format.
                 # cpu() moves the object into cpu
-                boxes = r.boxes.xywh.cpu()
+                # boxes = r.boxes.xywh.cpu()
 
-                
                 # Contains box plot information
                 yolo_json_format = json.loads(r.tojson())
 
@@ -196,44 +228,11 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
                     if new_obj.name == 'shark' and new_obj.confidence > standard_confidence:
                         frame_tracker[frame_cnt-1].append(new_obj)
 
-                
-            # 2. Draw Tracking History for each frame
-            prev_objects = None
+            # 2. Draw the tracking history
             for objects in frame_tracker:
-                
                 if len(objects) > 0:
-
-                    for obj in objects: 
-
-                        # Get the box center
-                        center = get_box_center(obj.box)
-                
-                        # Plot the object's location on the frame
-                        cv2.circle(frame, center, 2, LABEL_COLOR, 3)
-                        
-                        # Draw a label
-                        # obj.draw_label(frame, f"Detected")
-        
-                # Draw a line 
-                if prev_objects:
-                    is_overlapping = False 
-                    # Connect dectected objects from previous frame and current frame if any of them are overlapping
-                    for prev_obj in prev_objects:
-                        if prev_obj == obj:
-                            prev_obj.draw_line(frame, obj)
-                            is_overlapping = True
-                    
-                    # If there was at least on overlap occured, update the prev_objects
-                    if is_overlapping:
-                        prev_objects = objects
-                    
-                    # If not, make prev_objects None and we assume there were different sharks detected on the current frame
-                    else:    
-                        prev_objects = None
-
-                # If there is no previously detected objects, update it as currently detected objects
-                else:
-                    prev_objects = objects
+                    draw_tracking_history(prev_objects, detected_objects, objects, frame)
+                    draw_labels(detected_objects, frame)
 
             
             # 3. Write into the video file & increase the frame counter
