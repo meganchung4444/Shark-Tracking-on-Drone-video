@@ -1,12 +1,17 @@
 from collections import defaultdict
+import sys
 import cv2
 import numpy as np
 import json
 from ultralytics import YOLO
 import supervision as sv
-# from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 from fast_sam_ubuntu import FastSAMCustom
-# from sam_ubuntu import SAMCustom
+
+THICKNESS = 2
+FONT_SCALE = 0.5
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+COLOR = (255, 0, 0)
+LABEL_COLOR = (56, 56, 255)
 
 def load_video(video_path, output_path="./results/output.mp4"):
     cap = cv2.VideoCapture(video_path)
@@ -51,7 +56,7 @@ def is_shark_missed(json_format):
 
 # Reference: https://stackoverflow.com/questions/40795709/checking-whether-two-rectangles-overlap-in-python-using-two-bottom-left-corners
 def is_overlapping(rec1, rec2):
-    print("Testing overlapping between", rec1, "and", rec2)
+    # print("Testing overlapping between", rec1, "and", rec2)
     if (rec2['x2'] > rec1['x1'] and rec2['x2'] < rec1['x2']) or (rec2['x1'] > rec1['x1'] and rec2['x1'] < rec1['x2']):
         x_match = True
     else:
@@ -75,133 +80,192 @@ def find_sharks_by_sam(prev_sharks_prediction_list, sam_results):
                 results.append(('shark', obj_cls, obj_box, obj_confidence))
     return results
 
-def draw_tracking_history(frame, tracking_history):
-    if len(tracking_history) > 1:
-        for i in range(1, len(tracking_history)):
-            cv2.line(frame, tracking_history[i-1], tracking_history[i], (0, 255, 0), thickness=3, lineType=8)
+def get_box_center(box):
+    x1 = box["x1"]
+    x2 = box["x2"]
+    y1 = box["y1"]
+    y2 = box["y2"]
+    return (int(x1 + ((x2 - x1)//2)), int(y1 + ((y2 - y1)//2)))
 
-# 1. Set up a model
-model = YOLO("best.pt")
-model.to("cuda")
+class GeneralObject():
 
-# 2. Video Setup
-# Open the video file
-video_path = "./assets/example_vid_1.mp4"
-save_dir = "./results"
-results_name = "test_ori"
-output_path = f'{save_dir}/{results_name}.mp4'
-cap, video_writer = load_video(video_path, output_path)
+    def __init__(self, name, cls, box, confidence):
+        self.name = name
+        self.cls = cls
+        self.box = box
+        self.tracking_history = []
+        self.confidence = confidence
+    
+    def __str__(self):
+        return f"[ Name={self.name} Box={self.box} ]"
+
+    def update_box(self, box):
+        self.box = box
+
+    def update_confidence(self, confidence):
+        self.confidence = confidence
+
+    def append_tracking_history(self, center):
+        self.tracking_history.append(center)
+
+    def draw_box(self, frame):
+        # Draw Box
+        cv2.rectangle(frame, (int(self.box["x1"]), int(self.box["y1"])), (int(self.box["x2"]), int(self.box["y2"])), (56, 56, 255), 2) 
+
+    def draw_circle(self, frame):
+        cv2.circle(frame, get_box_center(self.box), 5, LABEL_COLOR, 3)
+
+    def draw_line(self, frame, other):
+        cv2.line(frame, get_box_center(self.box), get_box_center(other.box), COLOR, thickness=THICKNESS, lineType=8)
+
+    def draw_label(self, frame, text):
+        center = get_box_center(self.box)
+        label_pos = (center[0], center[1]-2)
+        cv2.putText(frame, text, label_pos, FONT,  
+                   FONT_SCALE, LABEL_COLOR, THICKNESS, cv2.LINE_AA)
+
+    def __eq__(self, other):
+        return is_overlapping(self.box, other.box)
 
 
-fs = FastSAMCustom()
+def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_path="./results/test.mp4", standard_confidence=0.77):   
 
-# 3. SAM setup
-# Set up SAM
+    frame_tracker = []
+    prev_objects = None
 
+    # 1. Set up a model
+    model = YOLO(model_path)
+    model.to("cuda")
 
-# Store all sharks from the most recent successed frame.
-prev_sharks_prediction_list = []
-tracking_history = []
+    # 2. Video Setup
+    # Open the video file
+    cap, video_writer = load_video(video_path, output_path)
 
-# Loop through the video frames
-frame_cnt = 1
-while cap.isOpened():
-    # Read a frame from the video
-    success, frame = cap.read()
-    if success:
+    # fs = FastSAMCustom()
 
-        # Run YOLOv8 tracking on the frame, persisting tracks between frames
-        results = model(frame)
+    # 3. SAM setup
+    # Set up SAM
+
+    # Loop through the video frames
+    frame_cnt = 1
+    while cap.isOpened():
+
+        # Read a frame from the video
+        success, frame = cap.read()
+        frame_tracker.append([])
         
-        """
-        # Custom SAM
-        sam_results = fs.get_json_data(frame=frame)
-        if sam_results:
-            for idx, r in enumerate(sam_results):
-                # print(f"SAM {frame_cnt}-{idx}", r)
-                continue
-        else:
-            print("No SAM results")
-            # Doc: https://docs.ultralytics.com/modes/predict/#boxes
-        """
-
-        # YOLO
-        for idx, r in enumerate(results):
-            # Returns torch.Tensor(https://pytorch.org/docs/stable/tensors.html)
-            # xywh returns the boxes in xywh format.
-            # cpu() moves the object into cpu
-            boxes = r.boxes.xywh.cpu()
-
-            # Store all predicted objects
-            object_prediction_list = []
-            sharks_prediction_list = []
+        if success:
             
-            # Contains box plot information
-            yolo_json_format = json.loads(r.tojson())
-            # print(f"YOLO {frame_cnt}-{idx}", yolo_json_format)
-
-            # Construct all object list and shark list
-            for obj in yolo_json_format:     
-                name = obj["name"]
-                cls = obj["class"]
-                box = obj["box"]
-                confidence = obj["confidence"]
-                object_prediction_list.append((name, cls, box, confidence))
-                
-                # Store only sharks
-                if name == "shark":
-                    sharks_prediction_list.append((name, cls, box, confidence))
-           
+            # Run YOLOv8 tracking on the frame, persisting tracks between frames
+            results = model(frame)
+            
             """
-            # Check if shark object is missing in yolo
-            if len(sharks_prediction_list) == 0 and sam_results:
-                print("Sharks are missing")
-                sharks_prediction_list = find_sharks_by_sam(prev_sharks_prediction_list, sam_results)
-                print("Detected sharks using SAM", sharks_prediction_list)
+            # Custom SAM
+            sam_results = fs.get_json_data(frame=frame)
+            if sam_results:
+                for idx, r in enumerate(sam_results):
+                    # print(f"SAM {frame_cnt}-{idx}", r)
+                    continue
+            else:
+                print("No SAM results")
+                # Doc: https://docs.ultralytics.com/modes/predict/#boxes
             """
 
-            # Plot on each frame
-            for obj in object_prediction_list:
-                name, cls, box, confidence = obj
+            # 1. Iterate the YOLO results
+            for idx, r in enumerate(results):
+                # Returns torch.Tensor(https://pytorch.org/docs/stable/tensors.html)
+                # xywh returns the boxes in xywh format.
+                # cpu() moves the object into cpu
+                boxes = r.boxes.xywh.cpu()
 
-                # Get Coordinates for each obj
-                x1 = box["x1"]
-                x2 = box["x2"]
-                y1 = box["y1"]
-                y2 = box["y2"]
+                
+                # Contains box plot information
+                yolo_json_format = json.loads(r.tojson())
 
-                center = (int(x1 + ((x2 - x1)//2)), int(y1 + ((y2 - y1)//2)))
-                label_pos = (center[0], center[1]-2)
-                # Draw Box
-                cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (56, 56, 255), 2)
-                
-                # Append Tracking History
-                if name == 'shark':
-                    tracking_history.append(center)
-                
-                    # Plot current location on the frame
-                    cv2.circle(frame, center, 5, (56, 56, 255), 3)
-                
-                # Generate Labels
-                
-                cv2.putText(frame,
-                            "Shark", label_pos,
-                            0,
-                            0.6, [56, 56, 255],
-                            thickness=1,
-                            lineType=cv2.LINE_AA)
-                
+                # 1-1. Construct all object list and shark list
+                for obj in yolo_json_format:     
+                    name = obj["name"]
+                    cls = obj["class"]
+                    box = obj["box"]
+                    confidence = obj["confidence"]
+                    
+                    # Create a new General Object
+                    new_obj = GeneralObject(name, cls, box, confidence)
+                    
+                    # Append the object if it has a high possiblity of being a shark
+                    if new_obj.name == 'shark' and new_obj.confidence > standard_confidence:
+                        frame_tracker[frame_cnt-1].append(new_obj)
 
+                
+            # 2. Draw Tracking History for each frame
+            prev_objects = None
+            for objects in frame_tracker:
+                
+                if len(objects) > 0:
 
-        prev_sharks_prediction_list = sharks_prediction_list
-        draw_tracking_history(frame, tracking_history)
-        video_writer.write(frame)
-        frame_cnt+=1
+                    for obj in objects: 
+
+                        # Get the box center
+                        center = get_box_center(obj.box)
+                
+                        # Plot the object's location on the frame
+                        cv2.circle(frame, center, 2, LABEL_COLOR, 3)
+                        
+                        # Draw a label
+                        # obj.draw_label(frame, f"Detected")
+        
+                # Draw a line 
+                if prev_objects:
+                    is_overlapping = False 
+                    # Connect dectected objects from previous frame and current frame if any of them are overlapping
+                    for prev_obj in prev_objects:
+                        if prev_obj == obj:
+                            prev_obj.draw_line(frame, obj)
+                            is_overlapping = True
+                    
+                    # If there was at least on overlap occured, update the prev_objects
+                    if is_overlapping:
+                        prev_objects = objects
+                    
+                    # If not, make prev_objects None and we assume there were different sharks detected on the current frame
+                    else:    
+                        prev_objects = None
+
+                # If there is no previously detected objects, update it as currently detected objects
+                else:
+                    prev_objects = objects
+
+            
+            # 3. Write into the video file & increase the frame counter
+            video_writer.write(frame)
+            frame_cnt+=1
+
+        else:
+            # Break the loop if the end of the video is reached
+            break
+
+    # Release the video capture object and close the display window
+    video_writer.release()
+    cap.release()
+
+if __name__ == "__main__":
+    # Check if the user provided the correct number of arguments
+    if len(sys.argv) == 5:
+                            
+        # Get the command-line arguments
+        model_path = sys.argv[1]
+        video_path = sys.argv[2]
+        output_path = sys.argv[3]
+        standard_confidence = float(sys.argv[4])
+
+        # Start the main function
+        main(model_path, video_path, output_path, standard_confidence)
+    
+    elif len(sys.argv) == 1:
+        main()
+
     else:
-        # Break the loop if the end of the video is reached
-        break
 
-# Release the video capture object and close the display window
-video_writer.release()
-cap.release()
-
+        # Print error
+        print("Usage: python script.py model_path video_path output_path standard_confidence")
+        sys.exit(1)
