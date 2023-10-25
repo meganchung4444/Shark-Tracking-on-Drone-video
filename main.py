@@ -7,9 +7,9 @@ from ultralytics import YOLO
 import supervision as sv
 
 THICKNESS = 2
-FONT_SCALE = 0.5
+FONT_SCALE = 0.7
 FONT = cv2.FONT_HERSHEY_SIMPLEX
-COLOR = (255, 0, 0)
+COLOR = (10, 20, 30)
 LABEL_COLOR = (56, 56, 255)
 
 def load_video(video_path, output_path="./results/output.mp4"):
@@ -53,22 +53,36 @@ def is_shark_missed(json_format):
             missed = False
     return missed
 
-# Reference: https://stackoverflow.com/questions/40795709/checking-whether-two-rectangles-overlap-in-python-using-two-bottom-left-corners
-def is_overlapping(rec1, rec2):
-    # print("Testing overlapping between", rec1, "and", rec2)
-    if (rec2['x2'] > rec1['x1'] and rec2['x2'] < rec1['x2']) or (rec2['x1'] > rec1['x1'] and rec2['x1'] < rec1['x2']):
-        x_match = True
-    else:
-        x_match = False
-    if (rec2['y2'] > rec1['y1'] and rec2['y2'] < rec1['y2']) or (rec2['y1'] > rec1['y1'] and rec2['y1'] < rec1['y2']):
-        y_match = True
-    else:
-        y_match = False
-    if x_match and y_match:
-        return True
-    else:
-        return False
+# def calculate_xywh()
 
+# Reference: https://stackoverflow.com/questions/40795709/checking-whether-two-rectangles-overlap-in-python-using-two-bottom-left-corners
+def is_overlapping(rect1, rect2):
+    
+    x1 = rect1["x1"]
+    y1 = rect1["y1"]
+    w1 = rect1["x2"] - rect1["x1"]
+    h1 = rect1["y2"] - rect1["y1"]
+
+    x2 = rect2["x1"]
+    y2 = rect2["y1"]
+    w2 = rect2["x2"] - rect2["x1"]
+    h2 = rect2["y2"] - rect2["y1"]
+    
+    # Calculate the coordinates of the top-left and bottom-right corners of each rectangle
+    top_left1 = (x1, y1)
+    bottom_right1 = (x1 + w1, y1 + h1)
+    top_left2 = (x2, y2)
+    bottom_right2 = (x2 + w2, y2 + h2)
+
+    # Check for intersection
+    if (top_left1[0] < bottom_right2[0] and
+        bottom_right1[0] > top_left2[0] and
+        top_left1[1] < bottom_right2[1] and
+        bottom_right1[1] > top_left2[1]):
+        return True  # Rectangles are intersecting
+    else:
+        return False  # Rectangles are not intersecting
+    
 def find_sharks_by_sam(prev_sharks_prediction_list, sam_results):
     results = []
     for shark in prev_sharks_prediction_list:
@@ -86,49 +100,6 @@ def get_box_center(box):
     y2 = box["y2"]
     return (int(x1 + ((x2 - x1)//2)), int(y1 + ((y2 - y1)//2)))
 
-def draw_tracking_history(prev_objects, detected_objects, objects, frame):
-    # 2. Draw Tracking History for each frame
-
-    # The loop will run only when objects is not empty
-    for obj in objects: 
-
-        # Draw a line 
-        if prev_objects:
-            is_overlapping = False 
-            # Connect dectected objects from previous frame and current frame if any of them are overlapping
-            for prev_obj in prev_objects:
-                if prev_obj == obj:
-                    prev_obj.draw_line(frame, obj)
-                    is_overlapping = True
-            
-            # If there was at least on overlap occured, update the prev_objects
-            if is_overlapping:
-                prev_objects = objects
-            
-            # If not, make prev_objects None and we assume there were different sharks detected on the current frame
-            else:
-                prev_objects = None
-
-        # If no prev_objects, assume currently detected objects are the beggining of new objects
-        else:
-            detected_objects.append(obj)
-       
-        # Update prev_objects
-        prev_objects = objects
-
-def draw_labels(detected_objects, frame):
-
-    for obj in detected_objects:
-
-        # Get the box center
-        center = get_box_center(obj.box)
-
-        # Plot the object's location on the frame
-        cv2.circle(frame, center, 2, LABEL_COLOR, 3)
-        
-        # Draw a label
-        obj.draw_label(frame, f"t{obj.frame_cnt}")
-
 class GeneralObject():
 
     def __init__(self, name, cls, box, confidence, frame_cnt):
@@ -138,7 +109,7 @@ class GeneralObject():
         self.tracking_history = []
         self.confidence = confidence
         self.frame_cnt = frame_cnt
-    
+
     def __str__(self):
         return f"[ Name={self.name} Box={self.box} ]"
 
@@ -148,18 +119,21 @@ class GeneralObject():
     def update_confidence(self, confidence):
         self.confidence = confidence
 
-    def append_tracking_history(self, center):
-        self.tracking_history.append(center)
+    def update_frame_cnt(self, frame_cnt):
+        self.frame_cnt = frame_cnt
 
     def draw_box(self, frame):
-        # Draw Box
         cv2.rectangle(frame, (int(self.box["x1"]), int(self.box["y1"])), (int(self.box["x2"]), int(self.box["y2"])), (56, 56, 255), 2) 
 
     def draw_circle(self, frame):
         cv2.circle(frame, get_box_center(self.box), 5, LABEL_COLOR, 3)
 
     def draw_line(self, frame, other):
-        cv2.line(frame, get_box_center(self.box), get_box_center(other.box), COLOR, thickness=THICKNESS, lineType=8)
+        c1, c2, c3 = COLOR
+        #c1 = (c1 + self.frame_cnt % 255)
+        #c2 = (c2 + self.frame_cnt % 255)
+        #c3 = (c3 + self.frame_cnt % 255)
+        cv2.line(frame, get_box_center(self.box), get_box_center(other.box), (c1, c2, c3), thickness=THICKNESS, lineType=8)
 
     def draw_label(self, frame, text):
         center = get_box_center(self.box)
@@ -174,8 +148,6 @@ class GeneralObject():
 def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_path="./results/test.mp4", standard_confidence=0.77):   
 
     frame_tracker = []
-    prev_objects = None
-    detected_objects = []
 
     # 1. Set up a model
     model = YOLO(model_path)
@@ -203,14 +175,15 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
             # Run YOLOv8 tracking on the frame, persisting tracks between frames
             results = model(frame)
             
+
             # 1. Iterate the YOLO results
-            for _, r in enumerate(results):
-                
+            for idx, r in enumerate(results):
                 # Returns torch.Tensor(https://pytorch.org/docs/stable/tensors.html)
                 # xywh returns the boxes in xywh format.
                 # cpu() moves the object into cpu
-                # boxes = r.boxes.xywh.cpu()
+                boxes = r.boxes.xywh.cpu()
 
+                
                 # Contains box plot information
                 yolo_json_format = json.loads(r.tojson())
 
@@ -220,7 +193,7 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
                     cls = obj["class"]
                     box = obj["box"]
                     confidence = obj["confidence"]
-                    
+                                            
                     # Create a new General Object
                     new_obj = GeneralObject(name, cls, box, confidence, frame_cnt)
                     
@@ -228,12 +201,56 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
                     if new_obj.name == 'shark' and new_obj.confidence > standard_confidence:
                         frame_tracker[frame_cnt-1].append(new_obj)
 
-            # 2. Draw the tracking history
+                
+            # 2. Draw Tracking History for each frame
+            prev_objects = []
+            recently_detected_objects = []
             for objects in frame_tracker:
-                if len(objects) > 0:
-                    draw_tracking_history(prev_objects, detected_objects, objects, frame)
-                    draw_labels(detected_objects, frame)
 
+                for i, obj in enumerate(objects):
+    
+                    # Get the box center
+                    center = get_box_center(obj.box)
+        
+                    # Plot the object's location on the frame
+                    
+                    if len(objects) > 0 and len(prev_objects) == 0:
+                        
+                        # Draw a circle
+                        cv2.circle(frame, center, 2, LABEL_COLOR, 3)
+                
+                        # Draw a label
+                        obj.draw_label(frame, f"t{obj.frame_cnt}")  
+                    
+                
+                    # if prev_objects is None:
+                        # cv2.circle(frame, center, 2, LABEL_COLOR, 3)
+                    
+                    # Connect lines if there are previously detected objects
+                    if len(prev_objects) > 0:
+                        
+                        # Check the box detection
+                        for prev_obj in prev_objects:
+                            if prev_obj == obj:
+                                prev_obj.draw_line(frame, obj)
+                                obj.update_frame_cnt(prev_obj.frame_cnt)
+
+                                 
+                    
+                """
+                    # Connect if there is 
+                    if len(objects) > 0 and len(prev_objects) == 0:
+                        for recent_obj in recently_detected_objects:
+                            recent_obj.draw_line(frame, obj)
+                            
+                if len(objects) == 0 and len(prev_objects) > 0:
+                    recently_detected_objects = prev_objects
+                """        
+
+
+                # Update prev_objects
+                prev_objects = objects
+                
             
             # 3. Write into the video file & increase the frame counter
             video_writer.write(frame)
