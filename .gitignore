@@ -9,4 +9,5 @@
 *.pt
 /results/*
 /results/
-
+*.mp4
+sample.txt
