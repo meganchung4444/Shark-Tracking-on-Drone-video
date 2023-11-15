@@ -15,6 +15,7 @@ THICKNESS = 2
 iFONT_SCALE = 0.7
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 COLOR = (10, 20, 30)
+INTERPOLATION_COLOR = (38, 146, 240)
 LABEL_COLOR = (56, 56, 255)
 
 def load_video(video_path, output_path="./results/output.mp4"):
@@ -121,23 +122,23 @@ class GeneralObject():
     def update_frame_cnt(self, frame_cnt):
         self.frame_cnt = frame_cnt
 
-    def draw_box(self, frame):
-        cv2.rectangle(frame, (int(self.box["x1"]), int(self.box["y1"])), (int(self.box["x2"]), int(self.box["y2"])), (56, 56, 255), 2) 
+    def draw_box(self, frame, color = LABEL_COLOR):
+        cv2.rectangle(frame, (int(self.box["x1"]), int(self.box["y1"])), (int(self.box["x2"]), int(self.box["y2"])), color, 2) 
 
     def draw_circle(self, frame):
         cv2.circle(frame, get_box_center(self.box), 5, LABEL_COLOR, 3)
 
-    def draw_line(self, frame, other):
-        c1, c2, c3 = COLOR
+    def draw_line(self, frame, other, color = COLOR, thickness = THICKNESS):
+        c1, c2, c3 = color
         #c1 = (c1 + self.frame_cnt % 255)
         #c2 = (c2 + self.frame_cnt % 255)
         #c3 = (c3 + self.frame_cnt % 255)
-        cv2.line(frame, self.center, other.center, (c1, c2, c3), thickness=THICKNESS, lineType=8)
+        cv2.line(frame, self.center, other.center, (c1, c2, c3), thickness=thickness, lineType=8)
 
-    def draw_label(self, frame, text):
+    def draw_label(self, frame, text, color = LABEL_COLOR):
         label_pos = (self.center[0], self.center[1]-2)
         cv2.putText(frame, text, label_pos, FONT,  
-                   FONT_SCALE, LABEL_COLOR, THICKNESS, cv2.LINE_AA)
+                   FONT_SCALE, color, THICKNESS, cv2.LINE_AA)
 
     def __eq__(self, other):
         return is_overlapping(self.box, other.box)
@@ -194,6 +195,8 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
                     # Append the object if it has a high possiblity of being a shark
                     if new_obj.name == 'shark' and new_obj.confidence > standard_confidence:
                         curr_shark = shark_frame_tracker[frame_cnt-1]
+
+                        # Replace curr_shark to new_obj if new_obj's confidence is higher
                         if curr_shark is not None and curr_shark.confidence < new_obj.confidence:
                             shark_frame_tracker[frame_cnt-1] = new_obj
                         elif curr_shark is None:
@@ -216,17 +219,18 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
                     continue
                 if prev_shark: # If the previous frame passes the bounding box detection test, draw the line
                     if prev_shark == curr_shark:
-                        prev_shark.draw_line(frame, curr_shark)
+                        prev_shark.draw_line(frame, curr_shark, thickness=3)
 
                 
                 # Need interpolation here
                 elif recently_detected_shark:
                     # If there is a recently detected shark and it passes the bounding box detection test, 
-                    if recently_detected_shark == curr_shark:
-                        recently_detected_shark.draw_line(frame, curr_shark)
+                    if recently_detected_shark == curr_shark: # Linear Interpolation
+                        recently_detected_shark.draw_line(frame, curr_shark, color=INTERPOLATION_COLOR)
                     # If there is a recently detected shark and it does not pass the bounding box detection test, 
                     else:
                         pass
+                        # recently_detected_shark.draw_line(frame, curr_shark, (255,255,153))
 
                 # 2-1-2. Update recently_detected_shark
                 if curr_shark:
@@ -242,7 +246,7 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
 
             # 2-3. Mark the currently detected shark
             if curr_shark:
-                curr_shark.draw_box(frame)
+                curr_shark.draw_box(frame, (71,214,39))
 
 
             # 3. Write into the video file & increase the frame counter

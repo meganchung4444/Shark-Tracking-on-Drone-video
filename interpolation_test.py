@@ -1,3 +1,4 @@
+from collections import defaultdict
 import sys
 import cv2
 import numpy as np
@@ -5,14 +6,8 @@ import json
 from ultralytics import YOLO
 import supervision as sv
 
-"""
-Author: Sunbeom (Ben) Kweon
-Description: This program assumes that there is only one shark in the video
-"""
-
-
 THICKNESS = 2
-iFONT_SCALE = 0.7
+FONT_SCALE = 0.7
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 COLOR = (10, 20, 30)
 LABEL_COLOR = (56, 56, 255)
@@ -49,6 +44,16 @@ def display_frame(annotated_frame):
 
     # Resizing the window
     cv2.resizeWindow("YOLOv8 Tracking", 1200, 800)
+
+
+def is_shark_missed(json_format):
+    missed = True
+    for obj in json_format:
+        if obj["name"] == "shark":
+            missed = False
+    return missed
+
+# def calculate_xywh()
 
 # Reference: https://stackoverflow.com/questions/40795709/checking-whether-two-rectangles-overlap-in-python-using-two-bottom-left-corners
 def is_overlapping(rect1, rect2):
@@ -101,19 +106,15 @@ class GeneralObject():
         self.name = name
         self.cls = cls
         self.box = box
+        self.tracking_history = []
         self.confidence = confidence
         self.frame_cnt = frame_cnt
-        self.center = get_box_center(self.box)
 
     def __str__(self):
         return f"[ Name={self.name} Box={self.box} ]"
 
-    def as_dict(self):
-        return {"name": self.name, "class":self.cls, "box":self.box, "confidence":self.confidence, "frame_cnt":self.frame_cnt}
-
     def update_box(self, box):
         self.box = box
-        self.center = get_box_center(box)
 
     def update_confidence(self, confidence):
         self.confidence = confidence
@@ -132,10 +133,11 @@ class GeneralObject():
         #c1 = (c1 + self.frame_cnt % 255)
         #c2 = (c2 + self.frame_cnt % 255)
         #c3 = (c3 + self.frame_cnt % 255)
-        cv2.line(frame, self.center, other.center, (c1, c2, c3), thickness=THICKNESS, lineType=8)
+        cv2.line(frame, get_box_center(self.box), get_box_center(other.box), (c1, c2, c3), thickness=THICKNESS, lineType=8)
 
     def draw_label(self, frame, text):
-        label_pos = (self.center[0], self.center[1]-2)
+        center = get_box_center(self.box)
+        label_pos = (center[0], center[1]-2)
         cv2.putText(frame, text, label_pos, FONT,  
                    FONT_SCALE, LABEL_COLOR, THICKNESS, cv2.LINE_AA)
 
@@ -143,11 +145,11 @@ class GeneralObject():
         return is_overlapping(self.box, other.box)
 
 
-def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_path="./results/test.mp4", standard_confidence=0.77):   
+def main(model_path="best.pt", video_path="./assets/example_vid_6_trimmed_and_zoomed.mp4", output_path="./results/test.mp4", standard_confidence=0.1):   
 
-    shark_frame_tracker = []
-    objects_frame_tracker = []
-    
+    frame_tracker = []
+    center_points = []
+
     # 1. Set up a model
     model = YOLO(model_path)
     model.to("cuda")
@@ -156,6 +158,10 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
     # Open the video file
     cap, video_writer = load_video(video_path, output_path)
 
+    # fs = FastSAMCustom()
+
+    # 3. SAM setup
+    # Set up SAM
 
     # Loop through the video frames
     frame_cnt = 1
@@ -163,19 +169,21 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
 
         # Read a frame from the video
         success, frame = cap.read()
-        shark_frame_tracker.append(None)
-        objects_frame_tracker.append([])
+        frame_tracker.append([])
+        
         if success:
             
             # Run YOLOv8 tracking on the frame, persisting tracks between frames
             results = model(frame)
             
+
             # 1. Iterate the YOLO results
             for idx, r in enumerate(results):
                 # Returns torch.Tensor(https://pytorch.org/docs/stable/tensors.html)
                 # xywh returns the boxes in xywh format.
                 # cpu() moves the object into cpu
                 boxes = r.boxes.xywh.cpu()
+
                 
                 # Contains box plot information
                 yolo_json_format = json.loads(r.tojson())
@@ -185,105 +193,77 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
                     name = obj["name"]
                     cls = obj["class"]
                     box = obj["box"]
-                    confidence = obj["confidence"]                   
-
+                    confidence = obj["confidence"]
+                                            
                     # Create a new General Object
                     new_obj = GeneralObject(name, cls, box, confidence, frame_cnt)
                     
-
                     # Append the object if it has a high possiblity of being a shark
                     if new_obj.name == 'shark' and new_obj.confidence > standard_confidence:
-                        curr_shark = shark_frame_tracker[frame_cnt-1]
-                        if curr_shark is not None and curr_shark.confidence < new_obj.confidence:
-                            shark_frame_tracker[frame_cnt-1] = new_obj
-                        elif curr_shark is None:
-                            shark_frame_tracker[frame_cnt-1] = new_obj
-                    else:
-                        objects_frame_tracker[frame_cnt-1].append(new_obj)
-
-            # 2. Draw the tracking history for each loop
-            prev_shark = None
-            recently_detected_shark = None
-            
-            # 2-1. Drawing the shark tracking line
-            for i in range(len(shark_frame_tracker)):
-                curr_shark = shark_frame_tracker[i]
-                curr_objects = objects_frame_tracker[i]
-
-                # 2-1-1. Draw the line
-                if curr_shark is None:  # If no shark in the current frame, skip the loop
-                    prev_shark = curr_shark
-                    continue
-                if prev_shark: # If the previous frame passes the bounding box detection test, draw the line
-                    if prev_shark == curr_shark:
-                        prev_shark.draw_line(frame, curr_shark)
+                        frame_tracker[frame_cnt-1].append(new_obj)
 
                 
-                # Need interpolation here
-                elif recently_detected_shark:
-                    # If there is a recently detected shark and it passes the bounding box detection test, 
-                    if recently_detected_shark == curr_shark:
-                        recently_detected_shark.draw_line(frame, curr_shark)
-                    # If there is a recently detected shark and it does not pass the bounding box detection test, 
-                    else:
-                        pass
+            # 2. Draw Tracking History for each frame
+            prev_objects = []
+            center_points = []
+            for objects in frame_tracker:
 
-                # 2-1-2. Update recently_detected_shark
-                if curr_shark:
-                    recently_detected_shark = curr_shark
+                for i, obj in enumerate(objects):
+    
+                    # Get the box center
+                    center = get_box_center(obj.box)
+        
+                    # Plot the object's location on the frame
+                    
+                    if len(objects) > 0 and len(prev_objects) == 0:
+                        
+                        # Draw a circle
+                        cv2.circle(frame, center, 2, LABEL_COLOR, 3)
                 
-                # 2-1-3. Update prev_shark (this will be updated regardless of curr_shark exists or not)
-                prev_shark = curr_shark
+                        # Draw a label
+                        obj.draw_label(frame, f"t{obj.frame_cnt}")  
+                    
+                
+                    # if prev_objects is None:
+                        # cv2.circle(frame, center, 2, LABEL_COLOR, 3)
+                    
+                    # Connect lines if there are previously detected objects
+                    if len(prev_objects) > 0:
+                        
+                        # Check the box detection
+                        for prev_obj in prev_objects:
+                            if prev_obj == obj:
+                                # prev_obj.draw_line(frame, obj)
+                                # obj.update_frame_cnt(prev_obj.frame_cnt)
+                                x, y = get_box_center(prev_obj.box)
+                                center_points.append([x, y])
+                                 
+                    
+                """
+                    # Connect if there is 
+                    if len(objects) > 0 and len(prev_objects) == 0:
+                        for recent_obj in recently_detected_objects:
+                            recent_obj.draw_line(frame, obj)
+                            
+                if len(objects) == 0 and len(prev_objects) > 0:
+                    recently_detected_objects = prev_objects
+                """        
 
-            # 2-2. Mark the currently detected objects
-            for curr_obj in curr_objects:
-                curr_obj.draw_box(frame)
 
-
-            # 2-3. Mark the currently detected shark
-            if curr_shark:
-                curr_shark.draw_box(frame)
-
+                # Update prev_objects
+                
+                prev_objects = objects
 
             # 3. Write into the video file & increase the frame counter
-            video_writer.write(frame)
+            # video_writer.write(frame)
             frame_cnt+=1
 
         else:
             # Break the loop if the end of the video is reached
             break
-    
-    # 4. Export the information for the metrices
-    json_data = []
-    for i in range(len(shark_frame_tracker)):
-        json_data.append({"frame_cnt": i+1})
-        
-        curr_shark = shark_frame_tracker[i]
-        curr_objects = objects_frame_tracker[i]
-        
-        if curr_shark:
-            json_data[i]["shark"] = curr_shark.as_dict()
-        else:
-            json_data[i]["shark"] = None
-
-        json_curr_objects = []
-        for obj in curr_objects:
-            json_curr_objects.append(obj.as_dict())
-        
-        json_data[i]["objects"] = json_curr_objects
-
-        # 1. Calculate angles, distance, speed between all objects and the shark
-        if len(curr_objects) == 0:
-            continue
-        else:
-            pass
-    
-    json_objects = json.dumps(json_data, indent=4)
-
-    with open("sample.json", "w") as outfile:
-        outfile.write(json_objects)
 
     # Release the video capture object and close the display window
+    np.savetxt("sample.txt", np.array(center_points))
     video_writer.release()
     cap.release()
 
