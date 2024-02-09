@@ -145,9 +145,10 @@ class GeneralObject():
         return is_overlapping(self.box, other.box)
 
 
-def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_path="./results/test.mp4", standard_confidence=0.77):   
+def main(model_path="best.pt", video_path="./assets/example_vid_6_trimmed_and_zoomed.mp4", output_path="./results/test.mp4", standard_confidence=0.1):   
 
     frame_tracker = []
+    center_points = []
 
     # 1. Set up a model
     model = YOLO(model_path)
@@ -204,7 +205,7 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
                 
             # 2. Draw Tracking History for each frame
             prev_objects = []
-            recently_detected_objects = []
+            center_points = []
             for objects in frame_tracker:
 
                 for i, obj in enumerate(objects):
@@ -232,9 +233,10 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
                         # Check the box detection
                         for prev_obj in prev_objects:
                             if prev_obj == obj:
-                                prev_obj.draw_line(frame, obj)
-                                obj.update_frame_cnt(prev_obj.frame_cnt)
-
+                                # prev_obj.draw_line(frame, obj)
+                                # obj.update_frame_cnt(prev_obj.frame_cnt)
+                                x, y = get_box_center(prev_obj.box)
+                                center_points.append([x, y])
                                  
                     
                 """
@@ -249,11 +251,11 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
 
 
                 # Update prev_objects
-                prev_objects = objects
                 
-            
+                prev_objects = objects
+
             # 3. Write into the video file & increase the frame counter
-            video_writer.write(frame)
+            # video_writer.write(frame)
             frame_cnt+=1
 
         else:
@@ -261,6 +263,7 @@ def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_p
             break
 
     # Release the video capture object and close the display window
+    np.savetxt("sample.txt", np.array(center_points))
     video_writer.release()
     cap.release()
 
