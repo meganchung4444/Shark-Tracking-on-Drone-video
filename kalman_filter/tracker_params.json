@@ -1,0 +1,9 @@
+{
+"u": 1, 
+"dt": 0.5e-3, 
+"std_acc": 4, 
+"std_meas_x": 1e-2, 
+"std_meas_y": 0.5e-4
+}
+
+
