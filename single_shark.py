@@ -144,7 +144,7 @@ class GeneralObject():
         return is_overlapping(self.box, other.box)
 
 
-def main(model_path="best.pt", video_path="./assets/example_vid_1.mp4", output_path="./results/test.mp4", standard_confidence=0.77):   
+def main(model_path="best.pt", video_path="./assets/vid6.mp4", output_path="./results/test6.mp4", standard_confidence=0.05):   
 
     shark_frame_tracker = []
     objects_frame_tracker = []

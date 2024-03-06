@@ -189,9 +189,9 @@ if __name__ == "__main__":
     parser.add_argument('--tracker-params', type=str, \
                         default='tracker_params.json')
     parser.add_argument('--video-path', type=str, \
-                        default='./resources/input_vid.mp4')
+                        default='./assets/vid6.mp4')
     parser.add_argument('--gt-path', type=str, \
-                        default='./resources/input_vid_gt.npy')
+                        default='/home/mchung/thesis/Shark-Tracking-on-Drone-video/coordinates.npy')
     args = parser.parse_args()   
 
     main(args)
