@@ -133,6 +133,9 @@ def greater_iou(box1, box2, box3):
 class GeneralObject():
 
     obj_id_counter = 1
+    # dictionary for 
+    id_arr = []
+    id_frames_dict = {}
 
     def __init__(self, name, cls, box, confidence, frame_cnt):
         self.name = name
@@ -141,8 +144,18 @@ class GeneralObject():
         self.confidence = confidence
         self.frame_cnt = frame_cnt
         self.center = get_box_center(self.box)
-        self.id = GeneralObject.obj_id_counter
-        GeneralObject.obj_id_counter += 1
+        self.id = self.set_id()
+
+    def set_id(self, frame_cnt, prev_objs):
+        
+        # if it is the first frame, so no previous objects
+        if len(prev_objs) == 0:
+            self.id = 1
+            return
+        
+
+
+        
 
     def __str__(self):
         return f"[ Name={self.name} Box={self.box} ]"
@@ -187,6 +200,7 @@ def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path
 
     shark_frame_tracker = []
     objects_frame_tracker = []
+    prev_objects = []
     
     # 1. Set up a model
     model = YOLO(model_path)
@@ -225,6 +239,7 @@ def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path
                 yolo_json_format = json.loads(r.tojson())
 
                 # 1-1. Construct all object list and shark list
+                prev_obj = None
                 for obj in yolo_json_format:     
                     name = obj["name"]
                     cls = obj["class"]
@@ -234,6 +249,11 @@ def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path
                     # Create a new General Object
                     new_obj = GeneralObject(name, cls, box, confidence, frame_cnt)
                     
+                    prev_objects = objects_frame_tracker
+                    if new_obj.name == "shark":
+                        prev_objects = shark_frame_tracker
+
+                    new_obj.set_id(frame_cnt - 1, prev_objects)
 
                     # Append the object if it has a high possiblity of being a shark
                     if new_obj.name == 'shark' and new_obj.confidence > standard_confidence:
@@ -244,8 +264,6 @@ def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path
                             shark_frame_tracker[frame_cnt-1] = new_obj
                         elif curr_shark is None:
                             shark_frame_tracker[frame_cnt-1] = new_obj
-                    elif new_obj.name == 'person':
-                        new_obj.draw_box(frame, c)
                     else:
                         objects_frame_tracker[frame_cnt-1].append(new_obj)
 
