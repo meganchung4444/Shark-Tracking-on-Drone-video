@@ -136,8 +136,8 @@ class GeneralObject():
     def draw_box(self, frame, color = LABEL_COLOR):
         cv2.rectangle(frame, (int(self.box["x1"]), int(self.box["y1"])), (int(self.box["x2"]), int(self.box["y2"])), color, 2) 
 
-    def draw_circle(self, frame):
-        cv2.circle(frame, get_box_center(self.box), 5, LABEL_COLOR, 3)
+    # def draw_circle(self, frame):
+    #     cv2.circle(frame, get_box_center(self.box), 5, LABEL_COLOR, 3)
 
     def draw_line(self, frame, other, color = COLOR, thickness = THICKNESS):
         c1, c2, c3 = color
@@ -207,6 +207,7 @@ def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path
     "id": 0
     }
 
+    all_boxes = []
     tracker = Tracker(tracker_params)
     id_dict = {}
     while cap.isOpened():
@@ -223,9 +224,11 @@ def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path
 
             centers = []
             iou_list = []
+            
 
-            # if frame_cnt == 200:
-            #     break
+            # for testing
+            if frame_cnt == 100:
+                break
             
             # 1. Iterate the YOLO results
             for idx, r in enumerate(results):
@@ -244,11 +247,12 @@ def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path
                     name = obj["name"]
                     cls = obj["class"]
                     box = obj["box"]
-                    confidence = obj["confidence"]   
+                    confidence = obj["confidence"]                   
 
                     # Create a new General Object
                     new_obj = GeneralObject(name, cls, box, confidence, frame_cnt)
                     centers.append(new_obj.center)
+                    all_boxes.append(new_obj.box)  
                     
 
                     # Append the object if it has a high possiblity of being a shark
@@ -279,21 +283,32 @@ def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path
                                           
                                         
                         print("TRACK ID", track.track_id)
-                        if track.track_id not in id_dict: 
-                            id_dict[track.track_id] = True
-                        cv2.rectangle(frame, (x - 10, y - 10), (x + 10, y + 10), \
-                                                    color_list[t_id%len(color_list)],1)
+                        # if track.track_id not in id_dict: 
+                        #     id_dict[track.track_id] = True
+                        cv2.rectangle(frame, (x - 100, y - 100), (x + 100, y + 100), \
+                                                    color_list[t_id%len(color_list)],5)
                         
                         cv2.putText(frame, str(track.track_id), (x - 10, y - 20), 0, 5, \
                                                     color_list[t_id%len(color_list)], 5) # 5 from 0.5
                         
+                        print("track.trace:", track.trace)
                         for k in range(len(track.trace)):                        
                             x = int(track.trace[k][0][0])
                             y = int(track.trace[k][1][0])
 
-                            cv2.circle(frame, (x, y), 5, \
-                                    color_list[t_id%len(color_list)], - 1) # udpated pixel size to 5 from 3
-                         
+                            # cv2.circle(frame, (x, y), 5, \
+                            #         color_list[t_id%len(color_list)], - 1) 
+                            # udpated pixel size to 5 from 3
+                            
+                            # If it's not the first point, draw a line connecting it to the previous point
+                            if k > 0:
+                                x2 = int(track.trace[k - 1][0][0])
+                                y2 = int(track.trace[k - 1][1][0])
+
+                                # Draw a line between current and previous points
+                                cv2.line(frame, (x, y), (x2, y2), color_list[t_id % len(color_list)], 5)
+            '''
+            
             # 2. Draw the tracking history for each loop
             # without kalman filter
             prev_shark = None
@@ -339,7 +354,7 @@ def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path
             if curr_shark:
                 curr_shark.draw_box(frame, (71,214,39))
             
-
+            '''
             resize = ResizeWithAspectRatio(frame, width=1200, height=800)
             print("FRAME COUNT:", frame_cnt)
             frame_nb_text= f"Frame:{frame_cnt}"                        
