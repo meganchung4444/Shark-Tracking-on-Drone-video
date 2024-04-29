@@ -4,7 +4,8 @@
 /archive/*
 /archive
 /archive/
+/other_results
+/other_videos
 *.pth
 *.pt
-*.mp4
 sample.txt
