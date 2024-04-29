@@ -1,0 +1,11 @@
+{
+    "u": 1, 
+    "dt":0.1,    
+    "std_acc": 0.1, 
+    "std_meas_x": 0.002,
+    "std_meas_y": 0.002,
+    "min_dist": 0.1, 
+    "max_lost_dets": 10, 
+    "trace_length":40, 
+    "id": 0
+}

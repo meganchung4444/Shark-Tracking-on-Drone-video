@@ -96,21 +96,79 @@ def get_box_center(box):
     y2 = box["y2"]
     return (int(x1 + ((x2 - x1)//2)), int(y1 + ((y2 - y1)//2)))
 
+# Source: https://pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
+def calc_iou(box1, box2):
+    # find coordinates for intersection box
+    # top left corner
+    inner_x1 = max(box1["x1"], box2["x2"])
+    inner_y1 = max(box1["y1"], box2["y1"])
+    # bottom right corner
+    inner_x2 = min(box1["x2"], box2["x2"])
+    inner_y2 = min(box1["y2"], box2["y2"])
+
+    # calc area of intersection box by multiplying width and height
+    # if not intersect, area = 0
+    # not sure about + 1
+    intersection_area = max(0, inner_x2 - inner_x1) * max(0, inner_y2 - inner_y1)
+
+    # calc the area of each box
+    box1_area = (box1["x2"] - box1["x1"]) * (box1["y2"] - box1["y1"])
+    box2_area = (box2["x2"] - box2["x1"]) * (box2["y2"] - box2["y1"]) 
+    # subtract the intersection area to not consider it twice
+    union_area = box1_area + box2_area - intersection_area
+
+    return intersection_area / union_area # iou equation
+
+
+def greater_iou(box1, box2, box3):
+    # box1 would be detected box
+    # box2 and box3 would be the 2 boxes that we are unsure is the next box in the path
+    iou1 = calc_iou(box1, box2)
+    iou2 = calc_iou(box1, box3)
+
+    if iou1 > iou2:
+        return box2
+    return box3 
+
 class GeneralObject():
 
-    def __init__(self, name, cls, box, confidence, frame_cnt):
+    obj_id_counter = 1
+    all_ids = set()
+    id_frames_dict = {}
+
+    def __init__(self, name, cls, box, confidence, frame_cnt, id):
         self.name = name
         self.cls = cls
         self.box = box
         self.confidence = confidence
         self.frame_cnt = frame_cnt
         self.center = get_box_center(self.box)
+        self.id = id
+
+    # def update_ids(self):
+    #     if self.id not in GeneralObject.all_ids:
+    #       GeneralObject.all_ids.add(self.id)
+
+    # def set_id(self, frame_cnt, frames):
+        
+    #     # if it is the first frame, so no previous objects
+    #     if len(frames) == 0:
+    #         self.id = 1
+    #         return
+    #     prev_obj= frames[frame_cnt - 2]
+    #     curr_obj = frames[frame_cnt - 1]
+    #     if self.is_overlapping(prev_obj, curr_obj):
+    #         self.id = prev_obj.id
+    #         return
+    #     else:
+    #         self.id = GeneralObject.obj_id_counter + 1
+        
 
     def __str__(self):
         return f"[ Name={self.name} Box={self.box} ]"
 
     def as_dict(self):
-        return {"name": self.name, "class":self.cls, "box":self.box, "confidence":self.confidence, "frame_cnt":self.frame_cnt}
+        return {"ID" : self.id, "name": self.name, "class":self.cls, "box":self.box, "confidence":self.confidence, "frame_cnt":self.frame_cnt}
 
     def update_box(self, box):
         self.box = box
@@ -124,6 +182,7 @@ class GeneralObject():
 
     def draw_box(self, frame, color = LABEL_COLOR):
         cv2.rectangle(frame, (int(self.box["x1"]), int(self.box["y1"])), (int(self.box["x2"]), int(self.box["y2"])), color, 2) 
+        cv2.putText(frame, str(self.id), (int(self.box["x1"]), int(self.box["y1"]) - 5), FONT, iFONT_SCALE, color, THICKNESS, cv2.LINE_AA)
 
     def draw_circle(self, frame):
         cv2.circle(frame, get_box_center(self.box), 5, LABEL_COLOR, 3)
@@ -138,13 +197,13 @@ class GeneralObject():
     def draw_label(self, frame, text, color = LABEL_COLOR):
         label_pos = (self.center[0], self.center[1]-2)
         cv2.putText(frame, text, label_pos, FONT,  
-                   FONT_SCALE, color, THICKNESS, cv2.LINE_AA)
+                   iFONT_SCALE, color, THICKNESS, cv2.LINE_AA)
 
     def __eq__(self, other):
         return is_overlapping(self.box, other.box)
 
 
-def main(model_path="best.pt", video_path="./assets/jamesvid.mp4", output_path="./results/single_jamesvid.mp4", standard_confidence=0.05):   
+def main(model_path="./best.pt", video_path="./assets/multi_objs.mp4", output_path="./results/multi_objs.mp4", standard_confidence=0.05):   
 
     shark_frame_tracker = []
     objects_frame_tracker = []
@@ -157,20 +216,22 @@ def main(model_path="best.pt", video_path="./assets/jamesvid.mp4", output_path="
     # Open the video file
     cap, video_writer = load_video(video_path, output_path)
 
-
     # Loop through the video frames
     frame_cnt = 1
+    ids = {}
     while cap.isOpened():
 
         # Read a frame from the video
         success, frame = cap.read()
+        print("success:", success)
         shark_frame_tracker.append(None)
         objects_frame_tracker.append([])
+        prev_objs = {}
         if success:
             
             # Run YOLOv8 tracking on the frame, persisting tracks between frames
             results = model(frame)
-            
+            # print("THESE ARE THE RESULSTS:", results)
             # 1. Iterate the YOLO results
             for idx, r in enumerate(results):
                 # Returns torch.Tensor(https://pytorch.org/docs/stable/tensors.html)
@@ -180,18 +241,52 @@ def main(model_path="best.pt", video_path="./assets/jamesvid.mp4", output_path="
                 
                 # Contains box plot information
                 yolo_json_format = json.loads(r.tojson())
+                # print("THIS IS THE JSON FORMAT", yolo_json_format)
 
                 # 1-1. Construct all object list and shark list
-                for obj in yolo_json_format:     
+                for obj in yolo_json_format:
+                    print("\nTHIS IS AN OBJ:", obj)     
                     name = obj["name"]
                     cls = obj["class"]
                     box = obj["box"]
-                    confidence = obj["confidence"]                   
+                    confidence = obj["confidence"] 
+                    # obj_id = 1
 
-                    # Create a new General Object
-                    new_obj = GeneralObject(name, cls, box, confidence, frame_cnt)
                     
-
+                    # algorithm to set ids
+                    isOverlap = False
+                    noPrevObj = True
+                    print("frame_cnt", frame_cnt)
+                    print(shark_frame_tracker)
+                    print(objects_frame_tracker)
+                    if len(shark_frame_tracker) == 1 and len(objects_frame_tracker) == 1: # if 1st object
+                        print("this is the first frame")
+                        obj_id = 1
+                    else:
+                        if name == "shark":    
+                            prev_obj = shark_frame_tracker[frame_cnt-2] 
+                        else:
+                            # noSameClass = True
+                            curr_frame = objects_frame_tracker[-1]
+                            if len(curr_frame) != 0:
+                                # there is previous obj
+                                for past_obj in curr_frame[::-1]:
+                                    print("past obj", past_obj)      
+                                    if past_obj.name == name:
+                                        prev_obj = objects_frame_tracker[frame_cnt - 2]
+                                        noPrevObj = False
+                        if noPrevObj and is_overlapping(obj["box"], prev_obj.box):
+                            obj_id = prev_obj.id
+                            isOverlap = True          
+                     #  generates a new id if the object doesn't overlap (new object) or has a different class
+                    if not isOverlap:
+                        obj_id = len(ids) + 1
+                        ids[obj_id] = True
+                    
+                    # Create a new General Object
+                    new_obj = GeneralObject(name, cls, box, confidence, frame_cnt, obj_id)
+                    print("for", name, "new_obj ID is:", obj_id)
+                
                     # Append the object if it has a high possiblity of being a shark
                     if new_obj.name == 'shark' and new_obj.confidence > standard_confidence:
                         curr_shark = shark_frame_tracker[frame_cnt-1]
@@ -203,10 +298,39 @@ def main(model_path="best.pt", video_path="./assets/jamesvid.mp4", output_path="
                             shark_frame_tracker[frame_cnt-1] = new_obj
                     else:
                         objects_frame_tracker[frame_cnt-1].append(new_obj)
+                    print("shark frame", shark_frame_tracker)
+                    print("obj frame", objects_frame_tracker, "\n")
 
+                    '''
+                    print("shark frame", shark_frame_tracker)
+                    print("obj frame", objects_frame_tracker, "\n")
+                    prev_obj = None
+                    if new_obj.name == "shark":          
+                        prev_objs = shark_frame_tracker
+                    else:
+                        prev_objs = objects_frame_tracker
+                    
+                    print("currently on frame...", frame_cnt)
+                    if len(prev_objs) == 1:
+                        new_obj.id = id_count
+                    else:
+                        prev_obj = prev_objs[frame_cnt - 2]
+                        curr_obj = prev_objs[frame_cnt - 1]
+                        print("prev", prev_obj, "and", curr_obj)
+                        if is_overlapping(prev_obj.box, curr_obj.box):
+                                new_obj.id = prev_obj.id
+                        else:
+                                id_count += 1
+                                new_obj.id = id_count
+                    new_obj.update_ids()
+            '''
+            # print("all the shark frames", shark_frame_tracker)
+            # print("all the object frames", objects_frame_tracker)
             # 2. Draw the tracking history for each loop
             prev_shark = None
             recently_detected_shark = None
+            prev_person = None
+            recently_detected_person = None
             
             # 2-1. Drawing the shark tracking line
             for i in range(len(shark_frame_tracker)):
@@ -238,6 +362,17 @@ def main(model_path="best.pt", video_path="./assets/jamesvid.mp4", output_path="
                 
                 # 2-1-3. Update prev_shark (this will be updated regardless of curr_shark exists or not)
                 prev_shark = curr_shark
+
+                for obj in curr_objects:
+                    if obj.name == 'person':
+                        if prev_person is not None and prev_person == obj:
+                            prev_person.draw_line(frame, obj, thickness=3)
+                        elif recently_detected_person is not None and recently_detected_person == obj:
+                            recently_detected_person.draw_line(frame, obj, color=INTERPOLATION_COLOR)
+                        recently_detected_person = obj
+                    prev_person = obj
+
+                
 
             # 2-2. Mark the currently detected objects
             for curr_obj in curr_objects:
@@ -284,7 +419,7 @@ def main(model_path="best.pt", video_path="./assets/jamesvid.mp4", output_path="
     
     json_objects = json.dumps(json_data, indent=4)
 
-    with open("sample_jamesvid.json", "w") as outfile:
+    with open("megan_multi.json", "w") as outfile:
         outfile.write(json_objects)
 
     # Release the video capture object and close the display window
@@ -292,23 +427,7 @@ def main(model_path="best.pt", video_path="./assets/jamesvid.mp4", output_path="
     cap.release()
 
 if __name__ == "__main__":
-    # Check if the user provided the correct number of arguments
-    if len(sys.argv) == 5:
-                            
-        # Get the command-line arguments
-        model_path = sys.argv[1]
-        video_path = sys.argv[2]
-        output_path = sys.argv[3]
-        standard_confidence = float(sys.argv[4])
 
-        # Start the main function
-        main(model_path, video_path, output_path, standard_confidence)
-    
-    elif len(sys.argv) == 1:
-        main()
-
-    else:
-
-        # Print error
-        print("Usage: python script.py model_path video_path output_path standard_confidence")
-        sys.exit(1)
+    print("code is running...")
+    main()
+    print("code is done running...")

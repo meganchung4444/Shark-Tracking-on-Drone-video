@@ -4,6 +4,9 @@ import numpy as np
 import json
 from ultralytics import YOLO
 import supervision as sv
+from ch4kf.tracker import Tracker
+# from ch5kf.tracker import Tracker
+import seaborn as sns
 
 """
 Author: Sunbeom (Ben) Kweon
@@ -17,6 +20,8 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 COLOR = (10, 20, 30)
 INTERPOLATION_COLOR = (38, 146, 240)
 LABEL_COLOR = (56, 56, 255)
+color_list = sns.color_palette('bright', 20) # 10 before
+color_list = [(int(r*255), int(g*255), int(b*255)) for (r, g, b) in color_list]
 
 def load_video(video_path, output_path="./results/output.mp4"):
     cap = cv2.VideoCapture(video_path)
@@ -89,14 +94,66 @@ def find_sharks_by_sam(prev_sharks_prediction_list, sam_results):
                 results.append(('shark', obj_cls, obj_box, obj_confidence))
     return results
 
+# def get_box_center(box):
+#     x1 = box["x1"]
+#     x2 = box["x2"]
+#     y1 = box["y1"]
+#     y2 = box["y2"]
+#     return (int(x1 + ((x2 - x1)//2)), int(y1 + ((y2 - y1)//2)))
 def get_box_center(box):
     x1 = box["x1"]
     x2 = box["x2"]
     y1 = box["y1"]
     y2 = box["y2"]
-    return (int(x1 + ((x2 - x1)//2)), int(y1 + ((y2 - y1)//2)))
+    return np.array([int(x1 + ((x2 - x1)//2)), int(y1 + ((y2 - y1)//2))])
 
-# Source: https://pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
+class GeneralObject():
+
+    def __init__(self, name, cls, box, confidence, frame_cnt):
+        self.name = name
+        self.cls = cls
+        self.box = box
+        self.confidence = confidence
+        self.frame_cnt = frame_cnt
+        self.center = get_box_center(self.box)
+
+    def __str__(self):
+        return f"[ Name={self.name} Box={self.box} ]"
+
+    def as_dict(self):
+        return {"name": self.name, "class":self.cls, "box":self.box, "confidence":self.confidence, "frame_cnt":self.frame_cnt}
+
+    def update_box(self, box):
+        self.box = box
+        self.center = get_box_center(box)
+
+    def update_confidence(self, confidence):
+        self.confidence = confidence
+
+    def update_frame_cnt(self, frame_cnt):
+        self.frame_cnt = frame_cnt
+
+    def draw_box(self, frame, color = LABEL_COLOR):
+        cv2.rectangle(frame, (int(self.box["x1"]), int(self.box["y1"])), (int(self.box["x2"]), int(self.box["y2"])), color, 2) 
+
+    # def draw_circle(self, frame):
+    #     cv2.circle(frame, get_box_center(self.box), 5, LABEL_COLOR, 3)
+
+    def draw_line(self, frame, other, color = COLOR, thickness = THICKNESS):
+        c1, c2, c3 = color
+        #c1 = (c1 + self.frame_cnt % 255)
+        #c2 = (c2 + self.frame_cnt % 255)
+        #c3 = (c3 + self.frame_cnt % 255)
+        cv2.line(frame, self.center, other.center, (c1, c2, c3), thickness=thickness, lineType=8)
+
+    def draw_label(self, frame, text, color = LABEL_COLOR):
+        label_pos = (self.center[0], self.center[1]-2)
+        cv2.putText(frame, text, label_pos, FONT,  
+                   FONT_SCALE, color, THICKNESS, cv2.LINE_AA)
+
+    def __eq__(self, other):
+        return is_overlapping(self.box, other.box)
+
 def calc_iou(box1, box2):
     # find coordinates for intersection box
     # top left corner
@@ -120,87 +177,11 @@ def calc_iou(box1, box2):
     return intersection_area / union_area # iou equation
 
 
-def greater_iou(box1, box2, box3):
-    # box1 would be detected box
-    # box2 and box3 would be the 2 boxes that we are unsure is the next box in the path
-    iou1 = calc_iou(box1, box2)
-    iou2 = calc_iou(box1, box3)
 
-    if iou1 > iou2:
-        return box2
-    return box3 
-
-class GeneralObject():
-
-    obj_id_counter = 1
-    # dictionary for 
-    id_arr = []
-    id_frames_dict = {}
-
-    def __init__(self, name, cls, box, confidence, frame_cnt):
-        self.name = name
-        self.cls = cls
-        self.box = box
-        self.confidence = confidence
-        self.frame_cnt = frame_cnt
-        self.center = get_box_center(self.box)
-        self.id = self.set_id()
-
-    def set_id(self, frame_cnt, prev_objs):
-        
-        # if it is the first frame, so no previous objects
-        if len(prev_objs) == 0:
-            self.id = 1
-            return
-        
-
-
-        
-
-    def __str__(self):
-        return f"[ Name={self.name} Box={self.box} ]"
-
-    def as_dict(self):
-        return {"name": self.name, "class":self.cls, "box":self.box, "confidence":self.confidence, "frame_cnt":self.frame_cnt}
-
-    def update_box(self, box):
-        self.box = box
-        self.center = get_box_center(box)
-
-    def update_confidence(self, confidence):
-        self.confidence = confidence
-
-    def update_frame_cnt(self, frame_cnt):
-        self.frame_cnt = frame_cnt
-
-    def draw_box(self, frame, color = LABEL_COLOR):
-        cv2.rectangle(frame, (int(self.box["x1"]), int(self.box["y1"])), (int(self.box["x2"]), int(self.box["y2"])), color, 2) 
-        cv2.putText(frame, str(self.id), (int(self.box["x1"]), int(self.box["y1"]) - 5), FONT, iFONT_SCALE, color, THICKNESS, cv2.LINE_AA)
-
-    def draw_circle(self, frame):
-        cv2.circle(frame, get_box_center(self.box), 5, LABEL_COLOR, 3)
-
-    def draw_line(self, frame, other, color = COLOR, thickness = THICKNESS):
-        c1, c2, c3 = color
-        #c1 = (c1 + self.frame_cnt % 255)
-        #c2 = (c2 + self.frame_cnt % 255)
-        #c3 = (c3 + self.frame_cnt % 255)
-        cv2.line(frame, self.center, other.center, (c1, c2, c3), thickness=thickness, lineType=8)
-
-    def draw_label(self, frame, text, color = LABEL_COLOR):
-        label_pos = (self.center[0], self.center[1]-2)
-        cv2.putText(frame, text, label_pos, FONT,  
-                   iFONT_SCALE, color, THICKNESS, cv2.LINE_AA)
-
-    def __eq__(self, other):
-        return is_overlapping(self.box, other.box)
-
-
-def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path="./results/jamesvid.mp4", standard_confidence=0.05):   
+def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path="./results/multi_objs.mp4", standard_confidence=0.05):   
 
     shark_frame_tracker = []
     objects_frame_tracker = []
-    prev_objects = []
     
     # 1. Set up a model
     model = YOLO(model_path)
@@ -210,23 +191,45 @@ def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path
     # Open the video file
     cap, video_writer = load_video(video_path, output_path)
 
-    print("finish loading the video...")
-    print("cap", cap)
 
-
+    trajectory_dict = {}
     # Loop through the video frames
     frame_cnt = 1
+    tracker_params = {
+    "u": 1, 
+    "dt":0.1,    
+    "std_acc": 0.1, 
+    "std_meas_x": 0.002,
+    "std_meas_y": 0.002,
+    "min_dist": 0.5, 
+    "min_iou": 0.01, 
+    "max_lost_dets": 15, 
+    "trace_length":40, 
+    "id": 0
+    }
+
+    all_boxes = []
+    tracker = Tracker(tracker_params)
+    id_dict = {}
     while cap.isOpened():
 
         # Read a frame from the video
         success, frame = cap.read()
-        print("success:", success)
         shark_frame_tracker.append(None)
         objects_frame_tracker.append([])
+        
         if success:
             
             # Run YOLOv8 tracking on the frame, persisting tracks between frames
             results = model(frame)
+
+            centers = []
+            iou_list = []
+            
+
+            # for testing
+            # if frame_cnt == 100:
+            #     break
             
             # 1. Iterate the YOLO results
             for idx, r in enumerate(results):
@@ -238,8 +241,9 @@ def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path
                 # Contains box plot information
                 yolo_json_format = json.loads(r.tojson())
 
+                
+
                 # 1-1. Construct all object list and shark list
-                prev_obj = None
                 for obj in yolo_json_format:     
                     name = obj["name"]
                     cls = obj["class"]
@@ -248,12 +252,9 @@ def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path
 
                     # Create a new General Object
                     new_obj = GeneralObject(name, cls, box, confidence, frame_cnt)
+                    centers.append(new_obj.center)
+                    all_boxes.append(new_obj.box)  
                     
-                    prev_objects = objects_frame_tracker
-                    if new_obj.name == "shark":
-                        prev_objects = shark_frame_tracker
-
-                    new_obj.set_id(frame_cnt - 1, prev_objects)
 
                     # Append the object if it has a high possiblity of being a shark
                     if new_obj.name == 'shark' and new_obj.confidence > standard_confidence:
@@ -266,12 +267,52 @@ def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path
                             shark_frame_tracker[frame_cnt-1] = new_obj
                     else:
                         objects_frame_tracker[frame_cnt-1].append(new_obj)
+                centers = np.array(centers)
+                centers = centers.reshape(-1, 2, 1)
+                
 
-            # 2. Draw the tracking history for each loop
+                if len(centers) > 0:
+                    tracker.manage_tracks(centers)
+                
+                # applying kalman filter 
+                for track in tracker.tracks:    
+                    if len(track.trace) > 0 and track.num_lost_dets <= 1:          
+                        t_id = track.track_id
+                        trajectory = trajectory_dict.get(t_id, [])  # Get the existing trajectory or initialize an empty list
+                        # most recent position of the track
+                        pos = track.updated
+                        x, y = int(pos[0][0]), int(pos[1][0])
+                        trajectory.append((x, y))  
+                        trajectory_dict[t_id] = trajectory
+                        
+                        cv2.rectangle(frame, (x - 100, y - 100), (x + 100, y + 100), \
+                                                    color_list[t_id%len(color_list)],5)
+                        
+                        cv2.putText(frame, str(track.track_id), (x - 10, y - 20), 0, 5, \
+                                                    color_list[t_id%len(color_list)], 5) # 5 from 0.5
+                        
+                        # print("track.trace:", track.trace)
+                        for k in range(len(track.trace)):                        
+                            x = int(track.trace[k][0][0])
+                            y = int(track.trace[k][1][0])
+
+                            # cv2.circle(frame, (x, y), 5, \
+                            #         color_list[t_id%len(color_list)], - 1) 
+                            # udpated pixel size to 5 from 3
+                            
+                            if k > 0:
+                                x2 = int(track.trace[k - 1][0][0])
+                                y2 = int(track.trace[k - 1][1][0])
+                                cv2.line(frame, (x, y), (x2, y2), color_list[t_id % len(color_list)], 10)
+            
+            for t_id, trajectory in trajectory_dict.items():
+                if len(trajectory) > 1:
+                    for i in range(1, len(trajectory)):
+                        cv2.line(frame, trajectory[i - 1], trajectory[i], color_list[t_id % len(color_list)], thickness=5)
+            
+            #  2. Draw the tracking history for each loop
             prev_shark = None
             recently_detected_shark = None
-            prev_person = None
-            recently_detected_person = None
             
             # 2-1. Drawing the shark tracking line
             for i in range(len(shark_frame_tracker)):
@@ -304,17 +345,6 @@ def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path
                 # 2-1-3. Update prev_shark (this will be updated regardless of curr_shark exists or not)
                 prev_shark = curr_shark
 
-                for obj in curr_objects:
-                    if obj.name == 'boatdolphin':
-                        if prev_person is not None and prev_person == obj:
-                            prev_person.draw_line(frame, obj, thickness=3)
-                        elif recently_detected_person is not None and recently_detected_person == obj:
-                            recently_detected_person.draw_line(frame, obj, color=INTERPOLATION_COLOR)
-                        recently_detected_person = obj
-                    prev_person = obj
-
-                
-
             # 2-2. Mark the currently detected objects
             for curr_obj in curr_objects:
                 curr_obj.draw_box(frame)
@@ -324,15 +354,27 @@ def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path
             if curr_shark:
                 curr_shark.draw_box(frame, (71,214,39))
 
+            resize = ResizeWithAspectRatio(frame, width=1200, height=800)
+            print("FRAME COUNT:", frame_cnt)
+            frame_nb_text= f"Frame:{frame_cnt}"                        
+            cv2.putText(resize,frame_nb_text , (20, 40), \
+                        cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255), 1)
+            
+            cv2.imshow("Shark Tracking", resize) # not resize
+            # cv2.resizeWindow("YOLOv8 Tracking", 1200, 800)
 
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
             # 3. Write into the video file & increase the frame counter
             video_writer.write(frame)
             frame_cnt+=1
 
         else:
+            print("video has ended")
+           
             # Break the loop if the end of the video is reached
             break
-    
+     
     # 4. Export the information for the metrices
     json_data = []
     for i in range(len(shark_frame_tracker)):
@@ -360,15 +402,32 @@ def main(model_path="./best.pt", video_path="./assets/jamesvid.mp4", output_path
     
     json_objects = json.dumps(json_data, indent=4)
 
-    with open("megan_test.json", "w") as outfile:
+    with open("vid6.json", "w") as outfile:
         outfile.write(json_objects)
+    
 
     # Release the video capture object and close the display window
     video_writer.release()
     cap.release()
 
 if __name__ == "__main__":
+    # Check if the user provided the correct number of arguments
+    if len(sys.argv) == 5:
+                            
+        # Get the command-line arguments
+        model_path = sys.argv[1]
+        video_path = sys.argv[2]
+        output_path = sys.argv[3]
+        standard_confidence = float(sys.argv[4])
 
-    print("code is running...")
-    main()
-    print("code is done running...")
+        # Start the main function
+        main(model_path, video_path, output_path, standard_confidence)
+    
+    elif len(sys.argv) == 1:
+        main()
+
+    else:
+
+        # Print error
+        print("Usage: python script.py model_path video_path output_path standard_confidence")
+        sys.exit(1)

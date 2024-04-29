@@ -5,7 +5,9 @@ def cost_matrix(tracks, detections):
     M = len(tracks)
     N = len(detections)
     print("Number of tracks:", M)
+    print("Tracks:", tracks)
     print("Number of detections:", N)
+    print("Detections:", detections)
     if N == 0:
         # No detections, set all costs to zero
         return np.zeros((M, M))

@@ -9,8 +9,8 @@ class Track(object):
         # self.KF = KalmanBBoxMot(params, detection) 
         self.KF = Kalman2d_mot(params, detection)               
         self.num_lost_dets = 0
-        self.trace = []        
-         
+        self.trace = [] 
+                 
     def predict(self):
         self.predicted = self.KF.predict()
 
@@ -18,13 +18,14 @@ class Track(object):
         self.updated = self.KF.update(detection)      
         
 class Tracker(object):
-    def __init__(self, params):
+    def __init__(self, params, boxes):
         self.params = params
         self.min_iou = self.params["min_iou"]
         self.max_lost_dets = self.params["max_lost_dets"]
         self.trace_length = self.params["trace_length"]
         self.id = self.params["id"]
-        self.tracks = []       
+        self.tracks = []
+        self.boxes= boxes      
 
     def manage_tracks(self, detections):   
         
@@ -45,7 +46,7 @@ class Tracker(object):
             
             if len(self.tracks[i].trace) >= self.trace_length:                
                 self.tracks[i].trace = self.tracks[i].trace[:-1]
-            self.tracks[i].trace.insert(0,updated_state)        
+            self.tracks[i].trace.insert(0,self.tracks[i].updated)        
                                 
         del_track = 0
         for i in unpaired_tracks:   
