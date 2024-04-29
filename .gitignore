@@ -1,13 +1,10 @@
 /env
 /segment-anything
-/assets
 /ultralytics/
 /archive/*
 /archive
 /archive/
 *.pth
 *.pt
-/results/*
-/results/
 *.mp4
 sample.txt
