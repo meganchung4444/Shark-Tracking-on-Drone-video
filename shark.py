@@ -93,12 +93,6 @@ def find_sharks_by_sam(prev_sharks_prediction_list, sam_results):
                 results.append(('shark', obj_cls, obj_box, obj_confidence))
     return results
 
-# def get_box_center(box):
-#     x1 = box["x1"]
-#     x2 = box["x2"]
-#     y1 = box["y1"]
-#     y2 = box["y2"]
-#     return (int(x1 + ((x2 - x1)//2)), int(y1 + ((y2 - y1)//2)))
 def get_box_center(box):
     x1 = box["x1"]
     x2 = box["x2"]
@@ -177,7 +171,7 @@ def calc_iou(box1, box2):
 
 
 
-def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path="./results/multi_objs.mp4", standard_confidence=0.05):   
+def main(model_path="best.pt", video_path="./assets/multi-objs.mp4", output_path="./results/output.mp4", standard_confidence=0.05):   
 
     shark_frame_tracker = []
     objects_frame_tracker = []
@@ -209,7 +203,6 @@ def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path
 
     all_boxes = []
     tracker = Tracker(tracker_params)
-    id_dict = {}
     while cap.isOpened():
 
         # Read a frame from the video
@@ -225,10 +218,6 @@ def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path
             centers = []
             iou_list = []
             
-
-            # for testing
-            # if frame_cnt == 100:
-            #     break
             
             # 1. Iterate the YOLO results
             for idx, r in enumerate(results):
@@ -354,13 +343,12 @@ def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path
                 curr_shark.draw_box(frame, (71,214,39))
 
             resize = ResizeWithAspectRatio(frame, width=1200, height=800)
-            print("FRAME COUNT:", frame_cnt)
             frame_nb_text= f"Frame:{frame_cnt}"                        
             cv2.putText(resize,frame_nb_text , (20, 40), \
                         cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255), 1)
             
-            cv2.imshow("Shark Tracking", resize) # not resize
-            # cv2.resizeWindow("YOLOv8 Tracking", 1200, 800)
+            cv2.imshow("Shark Tracking", resize) 
+            cv2.resizeWindow("YOLOv8 Tracking", 1200, 800)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -368,9 +356,7 @@ def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path
             video_writer.write(frame)
             frame_cnt+=1
 
-        else:
-            print("video has ended")
-           
+        else:           
             # Break the loop if the end of the video is reached
             break
      
