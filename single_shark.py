@@ -144,7 +144,7 @@ class GeneralObject():
         return is_overlapping(self.box, other.box)
 
 
-def main(model_path="best.pt", video_path="./assets/jamesvid.mp4", output_path="./results/single_jamesvid.mp4", standard_confidence=0.05):   
+def main(model_path="best.pt", video_path="./assets/multi-objs.mp4", output_path="./results/multi-objs.mp4", standard_confidence=0.05):   
 
     shark_frame_tracker = []
     objects_frame_tracker = []
@@ -284,7 +284,7 @@ def main(model_path="best.pt", video_path="./assets/jamesvid.mp4", output_path="
     
     json_objects = json.dumps(json_data, indent=4)
 
-    with open("sample_jamesvid.json", "w") as outfile:
+    with open("multi-obj.json", "w") as outfile:
         outfile.write(json_objects)
 
     # Release the video capture object and close the display window
