@@ -1,6 +1,6 @@
 import numpy as np
-from ch4kf.kalman_filter import Kalman2d_mot
-from ch4kf.tracker_utils import track_association
+from kf.kalman_filter import Kalman2d_mot
+from kf.tracker_utils import track_association
     
 class Track(object):
     def __init__(self, params, detection, trackId):    
