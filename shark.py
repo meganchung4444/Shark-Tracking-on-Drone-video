@@ -402,7 +402,7 @@ def main(model_path="best.pt", video_path="./assets/multi_objs.mp4", output_path
     
     json_objects = json.dumps(json_data, indent=4)
 
-    with open("vid6.json", "w") as outfile:
+    with open("output.json", "w") as outfile:
         outfile.write(json_objects)
     
 
