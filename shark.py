@@ -179,49 +179,6 @@ def main(model_path="best.pt", video_path="./assets/multi-objs.mp4", output_path
                     for i in range(1, len(trajectory)):
                         cv2.line(frame, trajectory[i - 1], trajectory[i], color_list[t_id % len(color_list)], thickness=3)
             
-            # #  2. Draw the tracking history for each loop
-            # prev_shark = None
-            # recently_detected_shark = None
-            
-            # # 2-1. Drawing the shark tracking line
-            # for i in range(len(shark_frame_tracker)):
-            #     curr_shark = shark_frame_tracker[i]
-            #     curr_objects = objects_frame_tracker[i]
-
-            #     # 2-1-1. Draw the line
-            #     if curr_shark is None:  # If no shark in the current frame, skip the loop
-            #         prev_shark = curr_shark
-            #         continue
-            #     if prev_shark: # If the previous frame passes the bounding box detection test, draw the line
-            #         if prev_shark == curr_shark:
-            #             prev_shark.draw_line(frame, curr_shark, thickness=3)
-
-                
-            #     # Need interpolation here
-            #     elif recently_detected_shark:
-            #         # If there is a recently detected shark and it passes the bounding box detection test, 
-            #         if recently_detected_shark == curr_shark: # Linear Interpolation
-            #             recently_detected_shark.draw_line(frame, curr_shark, color=INTERPOLATION_COLOR)
-            #         # If there is a recently detected shark and it does not pass the bounding box detection test, 
-            #         else:
-            #             pass
-            #             # recently_detected_shark.draw_line(frame, curr_shark, (255,255,153))
-
-            #     # 2-1-2. Update recently_detected_shark
-            #     if curr_shark:
-            #         recently_detected_shark = curr_shark
-                
-            #     # 2-1-3. Update prev_shark (this will be updated regardless of curr_shark exists or not)
-            #     prev_shark = curr_shark
-
-            # 2-2. Mark the currently detected objects
-            # for curr_obj in curr_objects:
-            #     curr_obj.draw_box(frame)
-
-
-            # # 2-3. Mark the currently detected shark
-            # if curr_shark:
-            #     curr_shark.draw_box(frame, (71,214,39))
 
             resize = ResizeWithAspectRatio(frame, width=1200, height=800)
             frame_nb_text= f"Frame:{frame_cnt}"                        
@@ -240,36 +197,6 @@ def main(model_path="best.pt", video_path="./assets/multi-objs.mp4", output_path
         else:           
             # Break the loop if the end of the video is reached
             break
-     
-    # # 4. Export the information for the metrices
-    # json_data = []
-    # for i in range(len(shark_frame_tracker)):
-    #     json_data.append({"frame_cnt": i+1})
-        
-    #     curr_shark = shark_frame_tracker[i]
-    #     curr_objects = objects_frame_tracker[i]
-        
-    #     if curr_shark:
-    #         json_data[i]["shark"] = curr_shark.as_dict()
-    #     else:
-    #         json_data[i]["shark"] = None
-
-    #     json_curr_objects = []
-    #     for obj in curr_objects:
-    #         json_curr_objects.append(obj.as_dict())
-        
-    #     json_data[i]["objects"] = json_curr_objects
-
-    #     # 1. Calculate angles, distance, speed between all objects and the shark
-    #     if len(curr_objects) == 0:
-    #         continue
-    #     else:
-    #         pass
-    
-    # json_objects = json.dumps(json_data, indent=4)
-
-    # with open("output.json", "w") as outfile:
-    #     outfile.write(json_objects)
     
 
     # Release the video capture object and close the display window
