@@ -4,12 +4,11 @@ import numpy as np
 import json
 from ultralytics import YOLO
 import supervision as sv
-from ch4kf.tracker import Tracker
-# from ch5kf.tracker import Tracker
+from kalman_filter.tracker import Tracker
 import seaborn as sns
 
 """
-Author: Sunbeom (Ben) Kweon
+Author: Megan Chung
 Description: This program assumes that there is only one shark in the video
 """
 
