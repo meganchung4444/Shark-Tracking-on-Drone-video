@@ -4,7 +4,7 @@
 
 #### 1. Clone this repo
 
-#### 2. Install all required dependancies(seaborn, numpy opencv, yolov5, Anaconda)
+#### 2. Install all required libraries/dependancies(python, pytorch, seaborn, numpy opencv, yolov5, Anaconda)
 
 #### 3. Download pretrained model
 
