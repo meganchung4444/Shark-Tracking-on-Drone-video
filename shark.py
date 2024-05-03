@@ -132,7 +132,7 @@ def main(model_path="best.pt", video_path="./assets/og-multi-objs.mp4", output_p
                     # MC - add the new detected object's center to list
                     centers.append(new_obj.center)                    
 
-                    # Append the object if it has a high possiblity of being a shark
+                    # Append the object if it has a high possibility of being a shark
                     if new_obj.name == 'shark' and new_obj.confidence > standard_confidence:
                         curr_shark = shark_frame_tracker[frame_cnt-1]
 
@@ -144,7 +144,7 @@ def main(model_path="best.pt", video_path="./assets/og-multi-objs.mp4", output_p
                     else:
                         objects_frame_tracker[frame_cnt-1].append(new_obj)
                 
-                # MC - Convert to numpy array and reshape to have 2 dimnesions: (automatic size), 2, 1
+                # MC - Convert to numpy array and reshape to have 2 dimensions: (automatic size), 2, 1
                 centers = np.array(centers)
                 centers = centers.reshape(-1, 2, 1)
                 
@@ -187,7 +187,7 @@ def main(model_path="best.pt", video_path="./assets/og-multi-objs.mp4", output_p
                         #         # MC - Draw line connecting the current point
                         #         cv2.line(frame, (x1, y1), (x2, y2), color_list[t_id % len(color_list)], 10)
             
-            # MC - Draw line for each tracjectory for each track
+            # MC - Draw line for each trajectory for each track
             for t_id, trajectory in trajectory_dict.items():
                 if len(trajectory) > 1:
                     for i in range(1, len(trajectory)):
