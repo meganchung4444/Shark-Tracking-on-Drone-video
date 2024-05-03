@@ -4,7 +4,7 @@
 
 #### 1. Clone this repo
 
-#### 2. Install all required dependancies, opencv, yolov5
+#### 2. Install all required dependancies, opencv, yolov5, Anaconda
 
 #### 3. Download pretrained model
 
