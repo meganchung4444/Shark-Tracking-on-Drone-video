@@ -4,14 +4,17 @@ import numpy as np
 import json
 from ultralytics import YOLO
 import supervision as sv
+# Source: Sadli, R. (2023). Beginner’s Guide to Multi-Object Tracking with Kalman Filter.
 from kf.tracker import Tracker
 import seaborn as sns
+# Written by Sunbeom (Ben) Kweon 
 from general_object import GeneralObject
 
 
 """
-Author: Megan Chung
-Description: This program assumes that there is only one shark in the video
+Author: Megan Chung (MC)
+Description: This program can handle videos with multiple objects. 
+However, this program has not been fully tested with other videos so it may not produce the same results. 
 """
 
 THICKNESS = 2
@@ -20,7 +23,7 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 COLOR = (10, 20, 30)
 INTERPOLATION_COLOR = (38, 146, 240)
 LABEL_COLOR = (56, 56, 255)
-# MC - 
+# Source: Sadli, R. (2023). Beginner’s Guide to Multi-Object Tracking with Kalman Filter.
 color_list = sns.color_palette('bright', 20) 
 color_list = [(int(r*255), int(g*255), int(b*255)) for (r, g, b) in color_list]
 
@@ -50,15 +53,15 @@ def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
 
 def display_frame(annotated_frame):
         
-    # SK - Display the annotated frame
+    # Display the annotated frame
     resize = ResizeWithAspectRatio(annotated_frame, width=1200, height=800)
     cv2.imshow("YOLOv8 Tracking", resize)
 
-    # SK - Resizing the window
+    # Resizing the window
     cv2.resizeWindow("YOLOv8 Tracking", 1200, 800)
 
 
-def main(model_path="best.pt", video_path="./assets/multi-objs.mp4", output_path="./results/output.mp4", standard_confidence=0.05):   
+def main(model_path="best.pt", video_path="./assets/og-multi-objs.mp4", output_path="./results/output.mp4", standard_confidence=0.05):   
 
     shark_frame_tracker = []
     objects_frame_tracker = []
@@ -71,7 +74,8 @@ def main(model_path="best.pt", video_path="./assets/multi-objs.mp4", output_path
     # Open the video file
     cap, video_writer = load_video(video_path, output_path)
 
-    # (MC)
+    # Source: Sadli, R. (2023). Beginner’s Guide to Multi-Object Tracking with Kalman Filter.
+    # MC - updated values when testing
     tracker_params = {
         "u": 1, 
         "dt":0.1,    
@@ -84,9 +88,9 @@ def main(model_path="best.pt", video_path="./assets/multi-objs.mp4", output_path
         "trace_length":40, 
         "id": 0
     }
-    # (MC)
+    # MC - initialize Tracker object with parameters
     tracker = Tracker(tracker_params)
-    # (MC)
+    # MC - initialize dictionary to keep track of objects' trajectories
     trajectory_dict = {}
     frame_cnt = 1
 
@@ -102,6 +106,7 @@ def main(model_path="best.pt", video_path="./assets/multi-objs.mp4", output_path
             # Run YOLOv8 tracking on the frame, persisting tracks between frames
             results = model(frame)
 
+            # MC - Initialize list to store all the objects' center for a frame
             centers = []            
             
             # 1. Iterate the YOLO results
@@ -124,7 +129,7 @@ def main(model_path="best.pt", video_path="./assets/multi-objs.mp4", output_path
                     # Create a new General Object
                     new_obj = GeneralObject(name, cls, box, confidence, frame_cnt)
 
-                    # (MC)
+                    # MC - add the new detected object's center to list
                     centers.append(new_obj.center)                    
 
                     # Append the object if it has a high possiblity of being a shark
@@ -139,47 +144,56 @@ def main(model_path="best.pt", video_path="./assets/multi-objs.mp4", output_path
                     else:
                         objects_frame_tracker[frame_cnt-1].append(new_obj)
                 
-                # (MC)
+                # MC - Convert to numpy array and reshape to have 2 dimnesions: (automatic size), 2, 1
                 centers = np.array(centers)
                 centers = centers.reshape(-1, 2, 1)
                 
-                # (MC)
+                # MC - if objects detected (must have objects to have centers), manage track
+                # manage_tracks: predict, perform track association, and update the state & handle unpaired tracks and detections
                 if len(centers) > 0:
                     tracker.manage_tracks(centers)
                 
-                # (MC)
+                # MC - Loop through each track and update trajectory
                 for track in tracker.tracks:    
                     if len(track.trace) > 0 and track.num_lost_dets <= 1:          
                         t_id = track.track_id
-                        trajectory = trajectory_dict.get(t_id, [])  # Get the existing trajectory or initialize an empty list
-                        # most recent position of the track
+                        # MC - Get the existing trajectory if ID exists 
+                        # or make an empty list for new ID
+                        trajectory = trajectory_dict.get(t_id, []) 
+                        # MC - Get the most recent position of the track
                         pos = track.updated
                         x, y = int(pos[0][0]), int(pos[1][0])
+                        # MC - Append the position to the trajectory list and dictionary
                         trajectory.append((x, y))  
                         trajectory_dict[t_id] = trajectory
                         
+                        # MC - Draw rectangle around the object
                         cv2.rectangle(frame, (x - 100, y - 100), (x + 100, y + 100), \
                                                     color_list[t_id%len(color_list)],5)
-                        
+                        # MC - Display the track ID next to rectangle 
                         cv2.putText(frame, str(track.track_id), (x - 10, y - 20), 0, 5, \
-                                                    color_list[t_id%len(color_list)], 5) # 5 from 0.5
-                        
-                        for k in range(len(track.trace)):                        
-                            x = int(track.trace[k][0][0])
-                            y = int(track.trace[k][1][0])
+                                                    color_list[t_id%len(color_list)], 5) 
+                
+                        # MC - Iterate each point of track's trace
+                        # for k in range(len(track.trace)):  
+                        #     # MC - Get x and y coordinate of current point                      
+                        #     x1 = int(track.trace[k][0][0])
+                        #     y1 = int(track.trace[k][1][0])
 
-                            
-                            if k > 0:
-                                x2 = int(track.trace[k - 1][0][0])
-                                y2 = int(track.trace[k - 1][1][0])
-                                # cv2.line(frame, (x, y), (x2, y2), color_list[t_id % len(color_list)], 10)
-            # (MC)
+                        #     if k > 0:
+                        #         # MC - Get x and y coordinate of previous point (if not the 1st point in trace)
+                        #         x2 = int(track.trace[k - 1][0][0])
+                        #         y2 = int(track.trace[k - 1][1][0])
+                        #         # MC - Draw line connecting the current point
+                        #         cv2.line(frame, (x1, y1), (x2, y2), color_list[t_id % len(color_list)], 10)
+            
+            # MC - Draw line for each tracjectory for each track
             for t_id, trajectory in trajectory_dict.items():
                 if len(trajectory) > 1:
                     for i in range(1, len(trajectory)):
                         cv2.line(frame, trajectory[i - 1], trajectory[i], color_list[t_id % len(color_list)], thickness=3)
             
-
+            # MC - Resize and display frame
             resize = ResizeWithAspectRatio(frame, width=1200, height=800)
             frame_nb_text= f"Frame:{frame_cnt}"                        
             cv2.putText(resize,frame_nb_text , (20, 40), \
@@ -188,8 +202,6 @@ def main(model_path="best.pt", video_path="./assets/multi-objs.mp4", output_path
             cv2.imshow("Shark Tracking", resize) 
             cv2.resizeWindow("YOLOv8 Tracking", 1200, 800)
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
             # 3. Write into the video file & increase the frame counter
             video_writer.write(frame)
             frame_cnt+=1
